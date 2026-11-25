@@ -1,0 +1,6 @@
+{
+  "name": "Mô Phỏng 3D Bê Tông Cốt Thép Gia Cường FRP",
+  "description": "Mô phỏng 3D tương tác thí nghiệm nén, bóc tách lớp vật liệu và độ bền xâm thực của kết cấu bê tông B25 gia cường vật liệu composite GFRP và CFRP.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
