@@ -27,6 +27,7 @@ import {
   type ComponentKey,
   type HoverHitCandidate,
 } from '../utils/specimenTooltip';
+import { computeXrayCameraPose, computeXrayCrossSection } from '../utils/xraySection';
 import { createProceduralTextures } from './proceduralTextures';
 import { createSpecimenRig, type ScaleCalloutAnchor } from './specimenBuilder';
 
@@ -62,6 +63,10 @@ interface FrpViewportProps {
   crackAnalysisMode: boolean;
   onSurfaceInspect: (report: CrackInspectionReport | null) => void;
   onHoverComponentChange?: (hover: HoverSpecimenPayload | null) => void;
+  xrayMode: boolean;
+  xrayHeightMm: number;
+  xrayCameraNonce: number;
+  xrayTopDown: boolean;
 }
 
 const CAMERA_PRESETS: Record<CameraPreset, { pos: [number, number, number]; target: [number, number, number] }> = {
@@ -112,6 +117,10 @@ export const FrpViewport = forwardRef<FrpViewportHandle, FrpViewportProps>(funct
     crackAnalysisMode,
     onSurfaceInspect,
     onHoverComponentChange,
+    xrayMode,
+    xrayHeightMm,
+    xrayCameraNonce,
+    xrayTopDown,
   },
   ref,
 ) {
@@ -143,6 +152,8 @@ export const FrpViewport = forwardRef<FrpViewportHandle, FrpViewportProps>(funct
     arActive,
     arShowFrame,
     crackAnalysisMode,
+    xrayMode,
+    xrayHeightMm,
   });
 
   stateRef.current = {
@@ -154,6 +165,8 @@ export const FrpViewport = forwardRef<FrpViewportHandle, FrpViewportProps>(funct
     arActive,
     arShowFrame,
     crackAnalysisMode,
+    xrayMode,
+    xrayHeightMm,
   };
 
   const callbacksRef = useRef({
@@ -247,6 +260,16 @@ export const FrpViewport = forwardRef<FrpViewportHandle, FrpViewportProps>(funct
   }, [cameraPreset, presetNonce]);
 
   useEffect(() => {
+    if (!xrayMode) return;
+    const info = computeXrayCrossSection(groupId, xrayHeightMm, loadRatio, salineMode);
+    const pose = computeXrayCameraPose(info.cutWorldY, xrayTopDown);
+    cameraGoalRef.current.pos.set(...pose.pos);
+    cameraGoalRef.current.target.set(...pose.target);
+    cameraGoalRef.current.active = true;
+    triggerRenderRef.current?.();
+  }, [xrayMode, xrayCameraNonce, xrayTopDown]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
     if (!crackAnalysisMode) {
       xrApiRef.current?.clearInspectionMarker();
     } else {
@@ -258,7 +281,18 @@ export const FrpViewport = forwardRef<FrpViewportHandle, FrpViewportProps>(funct
       callbacksRef.current.onHoverComponentChange?.(null);
     }
     triggerRenderRef.current?.();
-  }, [groupId, explodeValue, loadRatio, salineMode, scaleMode1to1, arActive, arShowFrame, crackAnalysisMode]);
+  }, [
+    groupId,
+    explodeValue,
+    loadRatio,
+    salineMode,
+    scaleMode1to1,
+    arActive,
+    arShowFrame,
+    crackAnalysisMode,
+    xrayMode,
+    xrayHeightMm,
+  ]);
 
   useEffect(() => {
     const container = mountRef.current;
@@ -282,6 +316,7 @@ export const FrpViewport = forwardRef<FrpViewportHandle, FrpViewportProps>(funct
     renderer.setClearColor(0x090d14, 1);
     renderer.shadowMap.enabled = !isSoftwareGl;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.localClippingEnabled = true;
     renderer.xr.enabled = true;
 
     const canvas = renderer.domElement;
@@ -538,7 +573,8 @@ export const FrpViewport = forwardRef<FrpViewportHandle, FrpViewportProps>(funct
       }
 
       const inXr = renderer.xr.isPresenting;
-      controls.minDistance = s.crackAnalysisMode ? 1.05 : 2.4;
+      controls.minDistance = s.crackAnalysisMode || s.xrayMode ? 1.05 : 2.4;
+      controls.minPolarAngle = s.xrayMode ? 0.04 : 0.18;
       rig.updateState({
         groupId: s.groupId,
         explodeValue: smoothExplode,
@@ -550,6 +586,8 @@ export const FrpViewport = forwardRef<FrpViewportHandle, FrpViewportProps>(funct
         elapsed,
         scaleGuideVisible: s.scaleMode1to1 || inXr,
         hideTallFrame: inXr && !s.arShowFrame,
+        xrayMode: s.xrayMode,
+        xrayHeightMm: s.xrayHeightMm,
       });
 
       return { s, needsContinuousAnim };
@@ -1008,6 +1046,8 @@ export const FrpViewport = forwardRef<FrpViewportHandle, FrpViewportProps>(funct
       data-scale-1to1={scaleMode1to1 ? 'on' : 'off'}
       data-ar-active={arActive ? 'on' : 'off'}
       data-crack-mode={crackAnalysisMode ? 'on' : 'off'}
+      data-xray-mode={xrayMode ? 'on' : 'off'}
+      data-xray-height={Math.round(xrayHeightMm)}
     >
       {/* Dedicated stable WebGL mount container */}
       <div ref={mountRef} className="absolute inset-0 w-full h-full" />

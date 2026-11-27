@@ -4,11 +4,13 @@ import { CrackInspectorPanel } from './components/CrackInspectorPanel';
 import { EngineeringDock } from './components/EngineeringDock';
 import { PdfExportModal } from './components/PdfExportModal';
 import { SpecimenHoverTooltip } from './components/SpecimenHoverTooltip';
+import { XraySectionPanel } from './components/XraySectionPanel';
 import { FrpViewport, type FrpViewportHandle, type HoverSpecimenPayload } from './three/FrpViewport';
 import type { ArSupportState } from './utils/arConfig';
 import type { CrackInspectionReport } from './utils/crackAnalysis';
 import type { CameraPreset, GroupId } from './utils/frpData';
 import { buildSpecimenTooltipData } from './utils/specimenTooltip';
+import { XRAY_DEFAULT_HEIGHT_MM } from './utils/xraySection';
 
 export default function App() {
   const [groupId, setGroupId] = useState<GroupId>('C2');
@@ -36,6 +38,10 @@ export default function App() {
   const [pdfModalOpen, setPdfModalOpen] = useState<boolean>(false);
   const [crackAnalysisMode, setCrackAnalysisMode] = useState<boolean>(false);
   const [inspectionReport, setInspectionReport] = useState<CrackInspectionReport | null>(null);
+  const [xrayMode, setXrayMode] = useState<boolean>(false);
+  const [xrayHeightMm, setXrayHeightMm] = useState<number>(XRAY_DEFAULT_HEIGHT_MM);
+  const [xrayTopDown, setXrayTopDown] = useState<boolean>(false);
+  const [xrayCameraNonce, setXrayCameraNonce] = useState<number>(0);
   const [hoverPayload, setHoverPayload] = useState<HoverSpecimenPayload | null>(null);
   const [viewportSize, setViewportSize] = useState<{ width: number; height: number }>(() => ({
     width: typeof window !== 'undefined' ? window.innerWidth : 1440,
@@ -144,12 +150,31 @@ export default function App() {
     setCrackAnalysisMode((prev) => {
       const next = !prev;
       if (next) {
+        setXrayMode(false);
         setIsPlaying(false);
         setExplodeValue(0);
         setLoadRatio((cur) => (cur < 0.72 ? 1.0 : cur));
       } else {
         setInspectionReport(null);
         viewportRef.current?.clearInspectionMarker();
+        setCameraPreset('overview');
+        setPresetNonce((n) => n + 1);
+      }
+      return next;
+    });
+  }, []);
+
+  const handleToggleXray = useCallback(() => {
+    setXrayMode((prev) => {
+      const next = !prev;
+      if (next) {
+        setCrackAnalysisMode(false);
+        setInspectionReport(null);
+        viewportRef.current?.clearInspectionMarker();
+        setExplodeValue(0);
+        setXrayTopDown(false);
+        setXrayCameraNonce((n) => n + 1);
+      } else {
         setCameraPreset('overview');
         setPresetNonce((n) => n + 1);
       }
@@ -187,6 +212,10 @@ export default function App() {
         crackAnalysisMode={crackAnalysisMode}
         onSurfaceInspect={setInspectionReport}
         onHoverComponentChange={setHoverPayload}
+        xrayMode={xrayMode}
+        xrayHeightMm={xrayHeightMm}
+        xrayCameraNonce={xrayCameraNonce}
+        xrayTopDown={xrayTopDown}
       />
 
       <EngineeringDock
@@ -197,7 +226,12 @@ export default function App() {
           viewportRef.current?.clearInspectionMarker();
         }}
         explodeValue={explodeValue}
-        onExplodeChange={setExplodeValue}
+        onExplodeChange={(val) => {
+          if (val > 0.05 && xrayMode) {
+            setXrayMode(false);
+          }
+          setExplodeValue(val);
+        }}
         loadRatio={loadRatio}
         onLoadChange={(val) => {
           setIsPlaying(false);
@@ -218,6 +252,8 @@ export default function App() {
         onOpenPdfExport={() => setPdfModalOpen(true)}
         crackAnalysisMode={crackAnalysisMode}
         onToggleCrackAnalysis={handleToggleCrackAnalysis}
+        xrayMode={xrayMode}
+        onToggleXray={handleToggleXray}
       />
 
       <CrackInspectorPanel
@@ -230,6 +266,20 @@ export default function App() {
         }}
         onResetZoom={handleResetCrackZoom}
         onExitMode={handleToggleCrackAnalysis}
+      />
+
+      <XraySectionPanel
+        active={xrayMode && !arActive}
+        groupId={groupId}
+        cutHeightMm={xrayHeightMm}
+        loadRatio={loadRatio}
+        salineMode={salineMode}
+        onChangeCutHeight={setXrayHeightMm}
+        onFocusCamera={(topDown) => {
+          setXrayTopDown(topDown);
+          setXrayCameraNonce((n) => n + 1);
+        }}
+        onExitMode={handleToggleXray}
       />
 
       <SpecimenHoverTooltip

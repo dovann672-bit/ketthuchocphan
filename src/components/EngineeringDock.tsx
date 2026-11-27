@@ -7,6 +7,7 @@ import {
   Pause,
   Play,
   RotateCcw,
+  ScanLine,
   Search,
   Smartphone,
   Table2,
@@ -43,6 +44,8 @@ interface EngineeringDockProps {
   onOpenPdfExport: () => void;
   crackAnalysisMode: boolean;
   onToggleCrackAnalysis: () => void;
+  xrayMode: boolean;
+  onToggleXray: () => void;
 }
 
 const PRESET_LABELS: Array<{ id: CameraPreset; label: string }> = [
@@ -74,6 +77,8 @@ export function EngineeringDock({
   onOpenPdfExport,
   crackAnalysisMode,
   onToggleCrackAnalysis,
+  xrayMode,
+  onToggleXray,
 }: EngineeringDockProps) {
   const [showCompareModal, setShowCompareModal] = useState(false);
 
@@ -88,12 +93,12 @@ export function EngineeringDock({
   return (
     <>
       {/* TOP-LEFT MINIMAL RESEARCH HEADER (giữ gọn trên 1 hàng ở desktop 1440px) */}
-      <header className="pointer-events-none fixed top-3 left-4 right-4 z-20 flex flex-wrap xl:flex-nowrap items-start justify-between gap-2.5">
-        <div className="pointer-events-auto bg-[#0b1019]/92 border border-slate-800/90 rounded-lg px-3.5 py-2 max-w-[430px] shadow-xl shrink-0">
-          <h1 className="text-[13px] sm:text-[14px] font-semibold text-slate-100 leading-snug">
+      <header className="pointer-events-none fixed top-3 left-4 right-4 z-20 flex flex-wrap xl:flex-nowrap items-start justify-between gap-2">
+        <div className="pointer-events-auto bg-[#0b1019]/92 border border-slate-800/90 rounded-lg px-3 py-2 max-w-[380px] shadow-xl shrink-0">
+          <h1 className="text-[13px] sm:text-[13.5px] font-semibold text-slate-100 leading-snug">
             Nghiên cứu thực nghiệm Bê tông B25 gia cường FRP
           </h1>
-          <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[11px] text-slate-400 mt-0.5">
+          <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[10.5px] text-slate-400 mt-0.5">
             <span>D = 150 mm · H = 300 mm</span>
             <span aria-hidden="true">·</span>
             <span>Nối chồng 150 mm</span>
@@ -103,13 +108,13 @@ export function EngineeringDock({
         </div>
 
         {/* Góc nhìn camera & các chế độ phân tích / xuất báo cáo */}
-        <div className="pointer-events-auto flex flex-wrap items-center gap-1 bg-[#0b1019]/92 border border-slate-800/90 rounded-lg p-1.5 shadow-xl">
+        <div className="pointer-events-auto flex flex-wrap items-center gap-1 bg-[#0b1019]/92 border border-slate-800/90 rounded-lg p-1 shadow-xl">
           {PRESET_LABELS.map((p) => (
             <button
               key={p.id}
               type="button"
               onClick={() => onSelectCameraPreset(p.id)}
-              className={`px-2 py-1.5 rounded-md text-[11.5px] font-medium whitespace-nowrap shrink-0 transition-colors cursor-pointer ${
+              className={`px-2 py-1.5 rounded-md text-[11px] font-medium whitespace-nowrap shrink-0 transition-colors cursor-pointer ${
                 cameraPreset === p.id
                   ? 'bg-sky-500/20 text-sky-300 border border-sky-500/40'
                   : 'text-slate-300 hover:text-white hover:bg-slate-800/80 border border-transparent'
@@ -121,9 +126,22 @@ export function EngineeringDock({
           <div className="w-px h-5 bg-slate-800 mx-0.5" aria-hidden="true" />
           <button
             type="button"
+            onClick={onToggleXray}
+            aria-pressed={xrayMode}
+            className={`flex items-center gap-1 px-2 py-1.5 rounded-md text-[11px] font-medium border whitespace-nowrap shrink-0 transition-colors cursor-pointer ${
+              xrayMode
+                ? 'bg-cyan-500/20 text-cyan-200 border-cyan-400/70'
+                : 'text-cyan-300 hover:bg-cyan-500/15 border-cyan-500/35'
+            }`}
+          >
+            <ScanLine className="w-3.5 h-3.5" />
+            <span>X-Ray mặt cắt</span>
+          </button>
+          <button
+            type="button"
             onClick={onToggleCrackAnalysis}
             aria-pressed={crackAnalysisMode}
-            className={`flex items-center gap-1.5 px-2 py-1.5 rounded-md text-[11.5px] font-medium border whitespace-nowrap shrink-0 transition-colors cursor-pointer ${
+            className={`flex items-center gap-1 px-2 py-1.5 rounded-md text-[11px] font-medium border whitespace-nowrap shrink-0 transition-colors cursor-pointer ${
               crackAnalysisMode
                 ? 'bg-rose-500/20 text-rose-200 border-rose-400/70'
                 : 'text-rose-300 hover:bg-rose-500/15 border-rose-500/35'
@@ -136,7 +154,7 @@ export function EngineeringDock({
             type="button"
             onClick={onOpenAr}
             aria-pressed={scaleMode1to1}
-            className={`flex items-center gap-1.5 px-2 py-1.5 rounded-md text-[11.5px] font-medium border whitespace-nowrap shrink-0 transition-colors cursor-pointer ${
+            className={`flex items-center gap-1 px-2 py-1.5 rounded-md text-[11px] font-medium border whitespace-nowrap shrink-0 transition-colors cursor-pointer ${
               scaleMode1to1
                 ? 'bg-sky-500/20 text-sky-300 border-sky-400/60'
                 : 'text-sky-300 hover:bg-sky-500/15 border-sky-500/35'
@@ -148,15 +166,15 @@ export function EngineeringDock({
           <button
             type="button"
             onClick={() => setShowCompareModal(true)}
-            className="flex items-center gap-1.5 px-2 py-1.5 rounded-md text-[11.5px] font-medium text-amber-300 hover:bg-amber-500/15 border border-amber-500/30 whitespace-nowrap shrink-0 transition-colors cursor-pointer"
+            className="flex items-center gap-1 px-2 py-1.5 rounded-md text-[11px] font-medium text-amber-300 hover:bg-amber-500/15 border border-amber-500/30 whitespace-nowrap shrink-0 transition-colors cursor-pointer"
           >
             <Table2 className="w-3.5 h-3.5" />
-            <span>Bảng so sánh 5 tổ hợp</span>
+            <span>So sánh 5 tổ hợp</span>
           </button>
           <button
             type="button"
             onClick={onOpenPdfExport}
-            className="flex items-center gap-1.5 px-2 py-1.5 rounded-md text-[11.5px] font-medium text-emerald-300 hover:bg-emerald-500/15 border border-emerald-500/35 whitespace-nowrap shrink-0 transition-colors cursor-pointer"
+            className="flex items-center gap-1 px-2 py-1.5 rounded-md text-[11px] font-medium text-emerald-300 hover:bg-emerald-500/15 border border-emerald-500/35 whitespace-nowrap shrink-0 transition-colors cursor-pointer"
           >
             <FileText className="w-3.5 h-3.5" />
             <span>Xuất PDF</span>

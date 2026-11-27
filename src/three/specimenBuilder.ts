@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import type { GroupId, LayerKey } from '../utils/frpData';
 import { SPECIMEN_GROUPS, computeExplodedLayerOffsets } from '../utils/frpData';
 import type { ComponentKey } from '../utils/specimenTooltip';
+import { computeXrayCrossSection } from '../utils/xraySection';
 import type { ProceduralTextureSet } from './proceduralTextures';
 
 export interface LayerCalloutAnchor {
@@ -33,6 +34,8 @@ export interface SpecimenRig {
     elapsed: number;
     scaleGuideVisible?: boolean;
     hideTallFrame?: boolean;
+    xrayMode?: boolean;
+    xrayHeightMm?: number;
   }) => void;
   setInspectionMarker: (worldPos: THREE.Vector3 | null, worldNormal?: THREE.Vector3) => void;
   getCalloutAnchors: (groupId: GroupId, explodeValue: number) => LayerCalloutAnchor[];
@@ -160,6 +163,11 @@ export function createSpecimenRig(
     disposables.push(item);
     return item;
   };
+
+  // Mặt phẳng cắt ngang cho chế độ X-Ray Cross-Section (giữ phần bên dưới cutWorldY)
+  const cutPlane = new THREE.Plane(new THREE.Vector3(0, -1, 0), 50);
+  const upperGhostPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -1.5);
+  const specimenClipList = [cutPlane];
 
   // --- 1. BỆ MÁY NÉN THỦY LỰC & KHUNG THÍ NGHIỆM 2.000 kN ---
   const rigFrameGroup = new THREE.Group();
@@ -344,6 +352,8 @@ export function createSpecimenRig(
       bumpScale: 0.028,
       roughness: 0.92,
       metalness: 0.02,
+      clippingPlanes: specimenClipList,
+      clipShadows: true,
     }),
   );
   const coreMesh = new THREE.Mesh(coreDeform.geometry, concreteMat);
@@ -373,7 +383,12 @@ export function createSpecimenRig(
   const microCrackGeo = track(new THREE.BufferGeometry());
   microCrackGeo.setAttribute('position', new THREE.Float32BufferAttribute(microLineVerts, 3));
   const microCrackMat = track(
-    new THREE.LineBasicMaterial({ color: 0x1c1414, transparent: true, opacity: 0.85 }),
+    new THREE.LineBasicMaterial({
+      color: 0x1c1414,
+      transparent: true,
+      opacity: 0.85,
+      clippingPlanes: specimenClipList,
+    }),
   );
   m0MicroCrackGroup.add(new THREE.LineSegments(microCrackGeo, microCrackMat));
   specimenGroup.add(m0MicroCrackGroup);
@@ -385,6 +400,7 @@ export function createSpecimenRig(
     new THREE.MeshBasicMaterial({
       color: 0x120b0b,
       side: THREE.DoubleSide,
+      clippingPlanes: specimenClipList,
     }),
   );
   const crackGlowMat = track(
@@ -393,6 +409,7 @@ export function createSpecimenRig(
       transparent: true,
       opacity: 0.78,
       side: THREE.DoubleSide,
+      clippingPlanes: specimenClipList,
     }),
   );
   const crackRing = new THREE.Mesh(
@@ -418,7 +435,11 @@ export function createSpecimenRig(
   // Các mảnh vỡ bê tông tách khỏi thân trụ M0
   const spallGeo = track(new THREE.DodecahedronGeometry(0.065, 0));
   const spallMat = track(
-    new THREE.MeshStandardMaterial({ color: 0x8f9499, roughness: 0.92 }),
+    new THREE.MeshStandardMaterial({
+      color: 0x8f9499,
+      roughness: 0.92,
+      clippingPlanes: specimenClipList,
+    }),
   );
   [
     [0.82, 0.12, 0.32],
@@ -522,7 +543,12 @@ export function createSpecimenRig(
       ];
       const seamGeo = track(new THREE.BufferGeometry().setFromPoints(seamPts));
       const seamMat = track(
-        new THREE.LineBasicMaterial({ color: 0xfbbf24, transparent: true, opacity: 0.9 }),
+        new THREE.LineBasicMaterial({
+          color: 0xfbbf24,
+          transparent: true,
+          opacity: 0.9,
+          clippingPlanes: specimenClipList,
+        }),
       );
       seamLine = new THREE.Line(seamGeo, seamMat);
       group.add(seamLine);
@@ -553,6 +579,7 @@ export function createSpecimenRig(
       clearcoat: isSoftwareGl ? 0 : 0.9,
       side: THREE.DoubleSide,
       depthWrite: false,
+      clippingPlanes: specimenClipList,
     }),
   );
   const primerShell = buildSplitShell(CORE_RADIUS + 0.012, primerMat, false);
@@ -567,6 +594,8 @@ export function createSpecimenRig(
       roughness: 0.55,
       metalness: 0.05,
       side: THREE.DoubleSide,
+      clippingPlanes: specimenClipList,
+      clipShadows: true,
     }),
   );
   const epoxyShell = buildSplitShell(CORE_RADIUS + 0.028, epoxyMat, false);
@@ -584,6 +613,7 @@ export function createSpecimenRig(
       metalness: 0.05,
       clearcoat: isSoftwareGl ? 0 : 0.55,
       side: THREE.DoubleSide,
+      clippingPlanes: specimenClipList,
     }),
   );
   const cfrpMat = track(
@@ -598,6 +628,8 @@ export function createSpecimenRig(
       clearcoat: isSoftwareGl ? 0 : 0.35,
       clearcoatRoughness: 0.4,
       side: THREE.DoubleSide,
+      clippingPlanes: specimenClipList,
+      clipShadows: true,
     }),
   );
 
@@ -616,6 +648,7 @@ export function createSpecimenRig(
       clearcoatRoughness: 0.08,
       side: THREE.DoubleSide,
       depthWrite: false,
+      clippingPlanes: specimenClipList,
     }),
   );
   const topcoatShell = buildSplitShell(CORE_RADIUS + 0.095, topcoatMat, false);
@@ -626,7 +659,11 @@ export function createSpecimenRig(
   const frpRuptureGroup = new THREE.Group();
   frpRuptureGroup.visible = false;
   const ruptureGapMat = track(
-    new THREE.MeshBasicMaterial({ color: 0xdc2626, side: THREE.DoubleSide }),
+    new THREE.MeshBasicMaterial({
+      color: 0xdc2626,
+      side: THREE.DoubleSide,
+      clippingPlanes: specimenClipList,
+    }),
   );
   const ruptureCoreBandMat = track(
     new THREE.MeshStandardMaterial({
@@ -634,10 +671,15 @@ export function createSpecimenRig(
       map: textures.concreteMap,
       roughness: 0.95,
       side: THREE.DoubleSide,
+      clippingPlanes: specimenClipList,
     }),
   );
   const ruptureStrandMat = track(
-    new THREE.MeshStandardMaterial({ color: 0xe2e8f0, roughness: 0.42 }),
+    new THREE.MeshStandardMaterial({
+      color: 0xe2e8f0,
+      roughness: 0.42,
+      clippingPlanes: specimenClipList,
+    }),
   );
   const ruptureBand = new THREE.Mesh(
     track(new THREE.CylinderGeometry(CORE_RADIUS + 0.125, CORE_RADIUS + 0.125, 0.12, 32, 1, true)),
@@ -942,6 +984,182 @@ export function createSpecimenRig(
   markerPin.position.z = 0.12;
   inspectionMarkerGroup.add(markerRing, markerCenterDot, markerPin);
 
+  // --- 7. CHẾ ĐỘ X-RAY CROSS-SECTION (MẶT CẮT NGANG & BÓNG X-RAY PHẦN TRÊN) ---
+  const crossSectionCapGroup = new THREE.Group();
+  crossSectionCapGroup.visible = false;
+  root.add(crossSectionCapGroup);
+
+  const coreCutMat = track(
+    new THREE.MeshStandardMaterial({
+      color: 0xdbe0e6,
+      map: textures.concreteMap,
+      roughness: 0.88,
+      metalness: 0.02,
+      side: THREE.DoubleSide,
+    }),
+  );
+  const coreCapMesh = new THREE.Mesh(
+    track(new THREE.CircleGeometry(CORE_RADIUS, 48)).rotateX(-Math.PI / 2),
+    coreCutMat,
+  );
+  crossSectionCapGroup.add(coreCapMesh);
+
+  const primerCapMat = track(
+    new THREE.MeshBasicMaterial({ color: 0xf59e0b, side: THREE.DoubleSide }),
+  );
+  const primerCapRing = new THREE.Mesh(
+    track(new THREE.RingGeometry(CORE_RADIUS, CORE_RADIUS + 0.015, 48)).rotateX(-Math.PI / 2),
+    primerCapMat,
+  );
+  primerCapRing.position.y = 0.001;
+
+  const epoxyCapMat = track(
+    new THREE.MeshBasicMaterial({ color: 0xe2e8f0, side: THREE.DoubleSide }),
+  );
+  const epoxyCapRing = new THREE.Mesh(
+    track(new THREE.RingGeometry(CORE_RADIUS + 0.015, CORE_RADIUS + 0.042, 48)).rotateX(-Math.PI / 2),
+    epoxyCapMat,
+  );
+  epoxyCapRing.position.y = 0.001;
+
+  const frp1CapMat = track(
+    new THREE.MeshBasicMaterial({ color: 0x10b981, side: THREE.DoubleSide }),
+  );
+  const frp1CapRing = new THREE.Mesh(
+    track(new THREE.RingGeometry(CORE_RADIUS + 0.042, CORE_RADIUS + 0.066, 48)).rotateX(-Math.PI / 2),
+    frp1CapMat,
+  );
+  frp1CapRing.position.y = 0.001;
+
+  const frp2CapMat = track(
+    new THREE.MeshBasicMaterial({ color: 0x34d399, side: THREE.DoubleSide }),
+  );
+  const frp2CapRing = new THREE.Mesh(
+    track(new THREE.RingGeometry(CORE_RADIUS + 0.066, CORE_RADIUS + 0.09, 48)).rotateX(-Math.PI / 2),
+    frp2CapMat,
+  );
+  frp2CapRing.position.y = 0.001;
+
+  const topcoatCapMat = track(
+    new THREE.MeshBasicMaterial({ color: 0xfde68a, side: THREE.DoubleSide }),
+  );
+  const topcoatCapRing1Layer = new THREE.Mesh(
+    track(new THREE.RingGeometry(CORE_RADIUS + 0.084, CORE_RADIUS + 0.102, 48)).rotateX(-Math.PI / 2),
+    topcoatCapMat,
+  );
+  topcoatCapRing1Layer.position.y = 0.001;
+
+  const topcoatCapRing2Layer = new THREE.Mesh(
+    track(new THREE.RingGeometry(CORE_RADIUS + 0.108, CORE_RADIUS + 0.126, 48)).rotateX(-Math.PI / 2),
+    topcoatCapMat,
+  );
+  topcoatCapRing2Layer.position.y = 0.001;
+
+  // Cung nối chồng 150 mm (2.0 rad) đặt tách vòng ngoài để nhìn rõ cả lớp sợi gốc lẫn đoạn nối chồng
+  const overlapThetaStart = -0.35 - Math.PI / 2;
+  const overlapCapMat = track(
+    new THREE.MeshBasicMaterial({ color: 0xfbbf24, side: THREE.DoubleSide }),
+  );
+  const overlapCapArc1Layer = new THREE.Mesh(
+    track(
+      new THREE.RingGeometry(
+        CORE_RADIUS + 0.066,
+        CORE_RADIUS + 0.084,
+        28,
+        1,
+        overlapThetaStart,
+        OVERLAP_ARC,
+      ),
+    ).rotateX(-Math.PI / 2),
+    overlapCapMat,
+  );
+  overlapCapArc1Layer.position.y = 0.0025;
+
+  const overlapCapArc2Layer = new THREE.Mesh(
+    track(
+      new THREE.RingGeometry(
+        CORE_RADIUS + 0.09,
+        CORE_RADIUS + 0.108,
+        28,
+        1,
+        overlapThetaStart,
+        OVERLAP_ARC,
+      ),
+    ).rotateX(-Math.PI / 2),
+    overlapCapMat,
+  );
+  overlapCapArc2Layer.position.y = 0.0025;
+
+  // Khung laser X-Ray cyan quanh mặt cắt
+  const xrayLaserMat = track(
+    new THREE.MeshBasicMaterial({
+      color: 0x22d3ee,
+      transparent: true,
+      opacity: 0.88,
+      side: THREE.DoubleSide,
+    }),
+  );
+  const xrayLaserRing = new THREE.Mesh(
+    track(new THREE.RingGeometry(CORE_RADIUS + 0.16, CORE_RADIUS + 0.182, 64)).rotateX(-Math.PI / 2),
+    xrayLaserMat,
+  );
+  xrayLaserRing.position.y = 0.002;
+  crossSectionCapGroup.add(
+    primerCapRing,
+    epoxyCapRing,
+    frp1CapRing,
+    frp2CapRing,
+    topcoatCapRing1Layer,
+    topcoatCapRing2Layer,
+    overlapCapArc1Layer,
+    overlapCapArc2Layer,
+    xrayLaserRing,
+  );
+
+  for (let t = 0; t < 4; t++) {
+    const ang = (t * Math.PI) / 2;
+    const tick = new THREE.Mesh(track(new THREE.BoxGeometry(0.11, 0.006, 0.014)), xrayLaserMat);
+    tick.position.set(Math.cos(ang) * (CORE_RADIUS + 0.24), 0.002, Math.sin(ang) * (CORE_RADIUS + 0.24));
+    tick.rotation.y = -ang;
+    crossSectionCapGroup.add(tick);
+  }
+
+  // Bóng X-Ray bán trong suốt của nửa trên trụ (phía trên mặt cắt)
+  const xrayGhostGroup = new THREE.Group();
+  xrayGhostGroup.visible = false;
+  root.add(xrayGhostGroup);
+
+  const xrayGhostMat = track(
+    new THREE.MeshBasicMaterial({
+      color: 0x38bdf8,
+      transparent: true,
+      opacity: 0.1,
+      depthWrite: false,
+      side: THREE.FrontSide,
+      clippingPlanes: [upperGhostPlane],
+    }),
+  );
+  const xrayGhostCylinder = new THREE.Mesh(
+    track(new THREE.CylinderGeometry(CORE_RADIUS + 0.095, CORE_RADIUS + 0.095, CORE_HEIGHT, 36, 1, false)),
+    xrayGhostMat,
+  );
+  xrayGhostCylinder.position.y = CORE_HEIGHT / 2;
+  xrayGhostCylinder.renderOrder = 6;
+
+  const xrayGhostTopRing = new THREE.Mesh(
+    track(new THREE.RingGeometry(CORE_RADIUS + 0.075, CORE_RADIUS + 0.098, 48)).rotateX(-Math.PI / 2),
+    track(
+      new THREE.MeshBasicMaterial({
+        color: 0x38bdf8,
+        transparent: true,
+        opacity: 0.45,
+        side: THREE.DoubleSide,
+      }),
+    ),
+  );
+  xrayGhostTopRing.position.y = CORE_HEIGHT;
+  xrayGhostGroup.add(xrayGhostCylinder, xrayGhostTopRing);
+
   const inspectableTargets: THREE.Object3D[] = [
     coreMesh,
     frp1Shell.leftMesh,
@@ -976,7 +1194,27 @@ export function createSpecimenRig(
   tagTarget(lowerPlatenDisc, 'platen');
   tagTarget(upperPlatenDisc, 'platen');
 
+  // Gắn metadata cho các vành mặt cắt X-Ray để rê chuột trên mặt cắt cũng hiện thông số
+  tagTarget(coreCapMesh, 'concrete');
+  tagTarget(primerCapRing, 'primer');
+  tagTarget(epoxyCapRing, 'epoxy');
+  tagTarget(frp1CapRing, 'frp1');
+  tagTarget(frp2CapRing, 'frp2');
+  tagTarget(topcoatCapRing1Layer, 'topcoat');
+  tagTarget(topcoatCapRing2Layer, 'topcoat');
+  tagTarget(overlapCapArc1Layer, 'frp1', true);
+  tagTarget(overlapCapArc2Layer, 'frp2', true);
+
   const hoverableTargets: THREE.Object3D[] = [
+    coreCapMesh,
+    primerCapRing,
+    epoxyCapRing,
+    frp1CapRing,
+    frp2CapRing,
+    topcoatCapRing1Layer,
+    topcoatCapRing2Layer,
+    overlapCapArc1Layer,
+    overlapCapArc2Layer,
     coreMesh,
     primerShell.leftMesh,
     primerShell.rightMesh,
@@ -1034,9 +1272,11 @@ export function createSpecimenRig(
       elapsed,
       scaleGuideVisible = false,
       hideTallFrame = false,
+      xrayMode = false,
+      xrayHeightMm = 150,
     }) => {
       scaleGuideGroup.visible = scaleGuideVisible;
-      tallFrameGroup.visible = !hideTallFrame;
+      tallFrameGroup.visible = !hideTallFrame && !xrayMode;
       contactShadowMesh.visible = !hideTallFrame;
       const spec = SPECIMEN_GROUPS[groupId];
       const hasFrp = spec.fiberType !== 'NONE';
@@ -1056,6 +1296,10 @@ export function createSpecimenRig(
       if (concreteMat.map !== targetConcMap) {
         concreteMat.map = targetConcMap;
         concreteMat.needsUpdate = true;
+      }
+      if (coreCutMat.map !== targetConcMap) {
+        coreCutMat.map = targetConcMap;
+        coreCutMat.needsUpdate = true;
       }
 
       // Hiển thị từng lớp theo tổ hợp
@@ -1101,9 +1345,44 @@ export function createSpecimenRig(
         }
       });
 
-      // Mâm nén trên đi xuống theo tỷ lệ tải
+      // Mâm nén trên đi xuống theo tỷ lệ tải (ẩn ở chế độ X-Ray để nhìn rõ mặt cắt từ trên xuống)
       const platenTravel = axialSquash * CORE_HEIGHT;
       topPlatenGroup.position.y = CORE_HEIGHT - platenTravel;
+      topPlatenGroup.visible = !xrayMode;
+
+      // Đồng bộ mặt phẳng cắt X-Ray Cross-Section & các vành lớp đồng tâm
+      if (xrayMode) {
+        const xrayInfo = computeXrayCrossSection(groupId, xrayHeightMm, loadRatio, salineMode);
+        cutPlane.constant = xrayInfo.cutWorldY;
+        upperGhostPlane.constant = -xrayInfo.cutWorldY;
+
+        crossSectionCapGroup.visible = true;
+        crossSectionCapGroup.position.y = xrayInfo.cutWorldY;
+        crossSectionCapGroup.scale.set(xrayInfo.radialBulgeScale, 1, xrayInfo.radialBulgeScale);
+
+        primerCapRing.visible = hasFrp;
+        epoxyCapRing.visible = hasFrp;
+        frp1CapRing.visible = hasFrp;
+        frp2CapRing.visible = hasTwoLayers;
+        topcoatCapRing1Layer.visible = hasFrp && !hasTwoLayers;
+        topcoatCapRing2Layer.visible = hasFrp && hasTwoLayers;
+        overlapCapArc1Layer.visible = hasFrp && !hasTwoLayers;
+        overlapCapArc2Layer.visible = hasFrp && hasTwoLayers;
+
+        frp1CapMat.color.setHex(spec.fiberType === 'GFRP' ? 0x38bdf8 : 0x10b981);
+        frp2CapMat.color.setHex(spec.fiberType === 'GFRP' ? 0x22d3ee : 0x34d399);
+
+        xrayGhostGroup.visible = true;
+        const ghostRadialScale = 1 + bulgeAmount * 0.55;
+        xrayGhostCylinder.scale.set(ghostRadialScale, 1 - axialSquash, ghostRadialScale);
+        xrayGhostCylinder.position.y = (CORE_HEIGHT * (1 - axialSquash)) / 2;
+        xrayGhostTopRing.position.y = CORE_HEIGHT * (1 - axialSquash);
+        xrayGhostTopRing.scale.setScalar(ghostRadialScale);
+      } else {
+        cutPlane.constant = 50;
+        crossSectionCapGroup.visible = false;
+        xrayGhostGroup.visible = false;
+      }
 
       // Vết nứt / đứt sợi ở tải cao & 100%
       m0MicroCrackGroup.visible = !hasFrp && loadRatio >= 0.68;
@@ -1125,7 +1404,7 @@ export function createSpecimenRig(
       }
 
       // Véc-tơ lực nén đỏ
-      const showAxial = loadRatio > 0.02;
+      const showAxial = loadRatio > 0.02 && !xrayMode;
       axialArrows.forEach((arr, idx) => {
         arr.visible = showAxial;
         if (showAxial) {
@@ -1150,7 +1429,7 @@ export function createSpecimenRig(
       });
 
       // Vòng ứng suất bó hông FRP phát sáng khi tải > 70%
-      hoopGroup.visible = isPassiveConfinement && explodeValue < 0.2;
+      hoopGroup.visible = isPassiveConfinement && explodeValue < 0.2 && !xrayMode;
       if (hoopGroup.visible) {
         const hoopIntensity = 0.7 + 0.9 * Math.max(0, (loadRatio - 0.7) / 0.3);
         hoopMat.emissiveIntensity = isRuptured ? 0.2 : hoopIntensity;
